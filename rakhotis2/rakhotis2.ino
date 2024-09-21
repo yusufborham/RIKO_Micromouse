@@ -4,7 +4,7 @@
 
 #define GYRO_CONFIG 0x1B
 
-#define WIDTH 170
+#define WIDTH 180
 #define DURATION 1000
 #define TURN 90
 
@@ -44,7 +44,7 @@
 #define left 1
 #define right 2
 
-
+int state = 0;
 // initialzing LEDS // middle // left // right // back
 
 byte leds[3] = { LED_M, LED_L, LED_R };
@@ -61,13 +61,13 @@ int loxReading[3];
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
 // PID Constatnts
-const double motKp = 45;
+const double motKp = 60;
 const double motKi = 2;
-const double motKd = 250;
-double motSetpoint = 0.0;
+const double motKd = 200;
+double motSetpoint = 2.0;
 double motInput = 0.0;
 double motOutput = 0.0;
-byte pid_case = 0 ;
+byte pid_case = 0;
 PID motPID(&motInput, &motOutput, &motSetpoint, motKp, motKi, motKd, DIRECT);
 
 long lastMicros = 0;
@@ -78,7 +78,7 @@ long lastMicros = 0;
 int MPU_addr = 0x68;
 float threshold = 0.1;
 float angle_threshold = 80;
-float rotating_speed = 200;
+float rotating_speed = 100;
 int cal_gyro = 1;  //set to zero to use gyro calibration offsets below.
 float ang_div = 0;
 
@@ -100,7 +100,7 @@ float yaw;  //Euler angle output
 
 #define ticks 10
 
-float distance_turn_threshold = 1600;
+float distance_turn_threshold = 3000;
 
 long counts_left_pinA = 0;
 long counts_left_pinB = 0;
@@ -255,7 +255,7 @@ float IMURead() {
   yaw = -atan2((q[1] * q[2] + q[0] * q[3]), 0.5 - (q[2] * q[2] + q[3] * q[3]));
   // to degrees
   yaw *= 180.0 / PI;
-  if (yaw < 0) yaw += 360.0;  //compass circle
+  //if (yaw < 0) yaw += 360.0;  //compass circle
   //ccrrect for local magnetic declination here
 
 
@@ -272,7 +272,7 @@ void IMUReset() {
 
 void MOTInit() {
   motPID.SetMode(AUTOMATIC);
-  motPID.SetOutputLimits(-100, 100);
+  motPID.SetOutputLimits(-127, 127);
   motPID.SetSampleTime(50);
 
   pinMode(MOT1A, OUTPUT);
@@ -286,52 +286,54 @@ void MOTForward(long durationMillis) {
   long startMillis = millis();
   while (millis() - startMillis < durationMillis) {
     LOXRead();
-    
-    static double leftSensor = 0 ,rightSensor = 0 ;
-    leftSensor  = loxReading[1] ;
-    rightSensor = loxReading[2] ;
 
-    if (leftSensor + rightSensor <= WIDTH) {     // < 170 
-      motInput = leftSensor - rightSensor;        
+    static double leftSensor = 0, rightSensor = 0;
+    leftSensor = loxReading[1];
+    rightSensor = loxReading[2];
+
+    if (leftSensor + rightSensor <= WIDTH) {  // < 170
+      motInput = leftSensor - rightSensor;
       motPID.Compute();
-      pid_case = 1 ;
+      pid_case = 1;
     }
 
-    else if ( leftSensor + rightSensor > WIDTH  &&  leftSensor + rightSensor < 2*WIDTH  && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)  ){  // < 340 
-      (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - WIDTH )) : (motInput = (leftSensor -WIDTH) - rightSensor  ) ;      
+    else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)) {  // < 340
+      (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - WIDTH)) : (motInput = (leftSensor - WIDTH) - rightSensor);
       motPID.Compute();
-      pid_case = 2 ;
-    } 
+      pid_case = 2;
+    }
 
-    else if (leftSensor + rightSensor > 2*WIDTH  &&  leftSensor + rightSensor < 3*WIDTH  ){   // < 510 
-      (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 2*WIDTH )) : (motInput = (leftSensor - 2*WIDTH) - rightSensor  ) ; 
+    else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH) {  // < 510
+      (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - 2 * WIDTH)) : (motInput = (leftSensor - 2 * WIDTH) - rightSensor);
       motPID.Compute();
-      pid_case = 3 ;
-    } 
+      pid_case = 3;
+    }
 
-    // else if (leftSensor + rightSensor > 3*WIDTH  &&  leftSensor + rightSensor < 4*WIDTH  ){ // < 580 
-    //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 3*WIDTH )) : (motInput = (leftSensor - 3*WIDTH) - rightSensor  ) ; 
+
+
+    // else if (leftSensor + rightSensor > 3*WIDTH  &&  leftSensor + rightSensor < 4*WIDTH  ){ // < 580
+    //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 3*WIDTH )) : (motInput = (leftSensor - 3*WIDTH) - rightSensor  ) ;
     //   pid_case = 4 ;
-    // } 
+    // }
 
-    // else if (leftSensor + rightSensor > 4*WIDTH  &&  leftSensor + rightSensor < 5*WIDTH  ){ // < 
-    //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 4*WIDTH )) : (motInput = (leftSensor - 4*WIDTH) - rightSensor  ) ; 
+    // else if (leftSensor + rightSensor > 4*WIDTH  &&  leftSensor + rightSensor < 5*WIDTH  ){ // <
+    //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 4*WIDTH )) : (motInput = (leftSensor - 4*WIDTH) - rightSensor  ) ;
     //   pid_case = 5 ;
-    // } 
+    // }
 
 
 
 
-    // right motor 
+    // right motor
     analogWrite(MOT1A, 0);
-    analogWrite(MOT1B, constrain(155 - motOutput, 0, 255));
+    analogWrite(MOT1B, constrain(255 - motOutput, 0, 255));
 
-    // left motor 
+    // left motor
     analogWrite(MOT2A, 0);
-    analogWrite(MOT2B, constrain(155 + motOutput, 0, 255));
+    analogWrite(MOT2B, constrain(255 + motOutput, 0, 255));
 
-     Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2] , motOutput , pid_case , loxReading[1] + loxReading[2] );
-     Serial.printf("   %d    %d     %d      %d  and my direction is %d \n", counts_right_pinB, counts_right_pinA, counts_left_pinA, counts_left_pinB),direction;
+    Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
+    Serial.printf("   %d    %d     %d      %d  and my direction is %d \n", counts_right_pinB, counts_right_pinA, counts_left_pinA, counts_left_pinB), direction;
   }
 }
 
@@ -343,11 +345,10 @@ void MOTBrake() {
   analogWrite(MOT1B, 255);
   analogWrite(MOT2A, 255);
   analogWrite(MOT2B, 255);
-  delay(150);
+  delay(300);
 }
 
 void MOTTurn(bool isLeft) {
-  LOXDisable();
   IMUReset();
 
   digitalWrite(MOT1A, LOW);
@@ -362,11 +363,13 @@ void MOTTurn(bool isLeft) {
 
   do {
     IMURead();
+    LOXRead();
     Serial.println(yaw);
-  } while (yaw < angle_threshold);
+  } while (abs(yaw) < angle_threshold);
   Serial.println("finished rotation ");
   MOTBrake();
-  LOXInit();
+  LOXRead();
+  delay(200);
 }
 
 void MOTTurn2(bool isLeft) {
@@ -385,12 +388,13 @@ void MOTTurn2(bool isLeft) {
   do {
     LOXRead();
     measureDistance();
-    //Serial.println(distance_avg);
-  } while (distance_avg < distance_turn_threshold);
+    Serial.printf("right distance is %f and the left distance is %f and the averafge distance is %f \n", distance_right, distance_left, distance_avg);
+  } while (isLeft ? (distance_avg < 1000) : (distance_avg < 1000));
   Serial.println("finished rotation ");
   isLeft ? (direction ? direction = 3 : direction -= 1) : direction = (direction + 1) % 4;
   Serial.println(direction);
   MOTBrake();
+  delay(200);
 }
 
 void MOTTurn3(bool isLeft) {
@@ -412,13 +416,30 @@ void MOTTurn3(bool isLeft) {
     LOXRead();
     IMURead();
     measureDistance();
-    Serial.printf ("the average distance is %f and ther angle is %f " ,distance_avg , yaw );
-  } while (distance_avg < distance_turn_threshold) && yaw < angle_threshold) ;
+    Serial.printf("the average distance is %f and ther angle is %f  \n", distance_avg, yaw);
+  } while (distance_avg < distance_turn_threshold && yaw < angle_threshold);
   Serial.println("finished rotation ");
   isLeft ? (direction ? direction = 3 : direction -= 1) : direction = (direction + 1) % 4;
   Serial.println(direction);
   MOTBrake();
   LOXInit();
+}
+
+void MOTTurn4(bool isLeft) {
+  LOXRead();
+  MOTBrake();
+  digitalWrite(MOT1A, LOW);
+  digitalWrite(MOT1B, LOW);
+  digitalWrite(MOT2A, LOW);
+  digitalWrite(MOT2B, LOW);
+
+  analogWrite(MOT1A, isLeft ? 0 : rotating_speed);
+  analogWrite(MOT1B, isLeft ? rotating_speed : 0);
+  analogWrite(MOT2A, isLeft ? rotating_speed : 0);
+  analogWrite(MOT2B, isLeft ? 0 : rotating_speed);
+
+  delay(500);
+  MOTBrake();
 }
 
 void LOXDisable() {
@@ -468,14 +489,17 @@ bool LOXRead() {
   for (int i = 0; i < 3; i++) {
     loxReading[i] = lox[i].readRangeResult();
 
-    if (lox[i].readRangeStatus() == 4 ) // || lox[i].readRangeStatus() == 2
+    if (lox[i].readRangeStatus() == 4)  // || lox[i].readRangeStatus() == 2
       loxReading[i] = 8191;
-    digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2) );
+
+    loxReading[2] -= 30 ;
+    digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2));
     walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2);
-   // Serial.print(lox[i].readRangeStatus());
+    
+    // Serial.print(lox[i].readRangeStatus());
     //Serial.print(", ");
   }
- // Serial.println();
+  // Serial.println();
   return true;
 }
 
@@ -553,15 +577,47 @@ void encoderInit() {
 void leftWallfollowing() {
   LOXRead();
 
-  if (loxReading[forward] > WIDTH / 2 && !(lox[0].readRangeStatus() == 2)) {
+  if (loxReading[forward] > WIDTH / 2) {
     MOTForward(1);
-  } else if (loxReading[forward] < WIDTH / 2 && !walls[left]) && !(lox[1].readRangeStatus() == 2)){
+  } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
     MOTTurn2(true);
   }
 
-  else if (loxReading[forward] < WIDTH / 2 && walls[left] && !(lox[2].readRangeStatus() == 2))) {
+  else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
     MOTTurn2(false);
   }
+}
+
+void leftWallfollowing2() {
+  LOXRead();
+
+  if (loxReading[forward] > WIDTH / 2) {
+    MOTForward(1);
+  } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
+    MOTTurn4(true);
+  }
+
+  else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
+    MOTTurn4(false);
+  }
+}
+
+void wallfollowing() {
+  LOXRead();
+  if (!walls[left]) {
+
+    MOTForward(400);
+    MOTTurn(true);
+    MOTForward(400);
+  }
+
+else if ((loxReading[forward] < WIDTH / 2) && !(lox[forward].readRangeStatus() == 2)) {
+  MOTTurn(false);
+}
+
+else {
+  MOTForward(1);
+}
 }
 
 
@@ -586,12 +642,27 @@ void setup() {
   pinMode(36, INPUT);
   pinMode(39, INPUT);
 
-  while (digitalRead(36) && digitalRead(39))
-    ;
 
-  delay(1000);
+  // while (digitalRead(36) && digitalRead(39)) {
+
+  //   if (digitalRead(36) == LOW) {
+  //     state = 1;
+  //     Serial.println("wall following");
+  //   }
+
+  //   else if (digitalRead(39) == LOW) {
+  //     state = 2;
+  //     Serial.println("borham following");
+  //   }
+  // }
+  state = 1;
+
+
+  delay(2000);
   // MOTTurn2(true) ;
 }
+
+
 
 
 void loop() {
@@ -599,8 +670,20 @@ void loop() {
   // lastMicros = micros();
   // Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
 
-  //MOTForward(1);
-  leftWallfollowing();
+   MOTForward(1);
+  // leftWallfollowing2();
+  // if (state == 1) {
+  //   wallfollowing();
+  // } else if (state == 2) {
+  //   leftWallfollowing2();
+  // }
+  //  MOTTurn2(true);
+  //  delay(2000) ;
+  //  MOTTurn2(true);
+  //  delay(2000);
+  //  MOTTurn2(true);
+  //  delay(2000);
+  //  wallfollowing();
   return;
 
 

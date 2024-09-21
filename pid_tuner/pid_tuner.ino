@@ -7,10 +7,12 @@
 #define LED_R	23
 #define LED_M	22
 
-#define MOT1A 32
-#define MOT1B	33
-#define MOT2A	25
-#define MOT2B	26
+// right
+#define MOT1A 33
+#define MOT1B 32
+// left
+#define MOT2A 25
+#define MOT2B 26
 
 const int LOX_ADDR[3] = { 0x30, 0x31, 0x32};
 const int SHT_LOX[3] = { 18, 12, 05 };
@@ -109,10 +111,10 @@ void loop() {
   LOXRead();
   // Serial.print(millis() - lastMicros);
   // Serial.print("    reading number    ");
-  // Serial.print(counter);
+   //Serial.print(counter);
   // Serial.print(" time is  ") ;
   // lastMicros = millis();
-  Serial.printf("%d   %d   %d   \n ", lox_reading[0] , lox_reading[1] ,lox_reading[2]);
+  Serial.printf("%d  \n ", lox_reading[1]-lox_reading[2]);
   delay(10);
   //counter++ ;
 }
