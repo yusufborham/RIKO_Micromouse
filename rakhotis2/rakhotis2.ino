@@ -61,10 +61,10 @@ int loxReading[3];
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
 // PID Constatnts
-const double motKp = 60;
-const double motKi = 2;
-const double motKd = 200;
-double motSetpoint = 2.0;
+const double motKp = 8.289;
+const double motKi = 7.584;
+const double motKd = 10 ;   //0.8068;
+double motSetpoint = 0.0;
 double motInput = 0.0;
 double motOutput = 0.0;
 byte pid_case = 0;
@@ -282,7 +282,7 @@ void MOTInit() {
 }
 
 void MOTForward(long durationMillis) {
-
+  static int flag = 4 ;
   long startMillis = millis();
   while (millis() - startMillis < durationMillis) {
     LOXRead();
@@ -295,18 +295,34 @@ void MOTForward(long durationMillis) {
       motInput = leftSensor - rightSensor;
       motPID.Compute();
       pid_case = 1;
+      flag = 4 ;
     }
 
-    else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)) {  // < 340
+    else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH ) {  // < 340
       (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - WIDTH)) : (motInput = (leftSensor - WIDTH) - rightSensor);
       motPID.Compute();
       pid_case = 2;
+      flag = 4 ;
     }
 
-    else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH) {  // < 510
+    else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2) ) {  // < 510
       (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - 2 * WIDTH)) : (motInput = (leftSensor - 2 * WIDTH) - rightSensor);
+      //motOutput = 0;
       motPID.Compute();
       pid_case = 3;
+      flag = 4 ;
+      
+    }
+    else {
+      if (flag ==4 ){
+        motOutput=-motOutput;
+      }
+      
+      else if (flag == 0)
+      motOutput=0;
+
+      pid_case = 0;
+      flag--;
     }
 
 
@@ -314,11 +330,15 @@ void MOTForward(long durationMillis) {
     // else if (leftSensor + rightSensor > 3*WIDTH  &&  leftSensor + rightSensor < 4*WIDTH  ){ // < 580
     //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 3*WIDTH )) : (motInput = (leftSensor - 3*WIDTH) - rightSensor  ) ;
     //   pid_case = 4 ;
+    //   motPID.Compute();
+
     // }
 
     // else if (leftSensor + rightSensor > 4*WIDTH  &&  leftSensor + rightSensor < 5*WIDTH  ){ // <
     //   (rightSensor > leftSensor) ? (motInput = leftSensor - ( rightSensor - 4*WIDTH )) : (motInput = (leftSensor - 4*WIDTH) - rightSensor  ) ;
     //   pid_case = 5 ;
+    //   motPID.Compute();
+
     // }
 
 
@@ -326,11 +346,11 @@ void MOTForward(long durationMillis) {
 
     // right motor
     analogWrite(MOT1A, 0);
-    analogWrite(MOT1B, constrain(255 - motOutput, 0, 255));
+    analogWrite(MOT1B, constrain(127 - motOutput, 0, 255));
 
     // left motor
     analogWrite(MOT2A, 0);
-    analogWrite(MOT2B, constrain(255 + motOutput, 0, 255));
+    analogWrite(MOT2B, constrain(127 + motOutput, 0, 255));
 
     Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
     Serial.printf("   %d    %d     %d      %d  and my direction is %d \n", counts_right_pinB, counts_right_pinA, counts_left_pinA, counts_left_pinB), direction;
@@ -492,7 +512,7 @@ bool LOXRead() {
     if (lox[i].readRangeStatus() == 4)  // || lox[i].readRangeStatus() == 2
       loxReading[i] = 8191;
 
-    loxReading[2] -= 30 ;
+    // loxReading[2] -= 30 ;
     digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2));
     walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2);
     
@@ -607,12 +627,12 @@ void wallfollowing() {
   if (!walls[left]) {
 
     MOTForward(400);
-    MOTTurn(true);
+    MOTTurn4(true);
     MOTForward(400);
   }
 
 else if ((loxReading[forward] < WIDTH / 2) && !(lox[forward].readRangeStatus() == 2)) {
-  MOTTurn(false);
+  MOTTurn4(false);
 }
 
 else {
@@ -666,11 +686,11 @@ void setup() {
 
 
 void loop() {
-  // Serial.printf("[%d] ", micros() - lastMicros); []
+  // Serial.printf("[%d] ", micros() - lastMicros);
   // lastMicros = micros();
-  // Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
+  //Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
 
-   MOTForward(1);
+ // MOTForward(1);
   // leftWallfollowing2();
   // if (state == 1) {
   //   wallfollowing();
@@ -679,11 +699,10 @@ void loop() {
   // }
   //  MOTTurn2(true);
   //  delay(2000) ;
-  //  MOTTurn2(true);
+  //  MOTTurn2(true);i
   //  delay(2000);
   //  MOTTurn2(true);
-  //  delay(2000);
-  //  wallfollowing();
+  //  delay(2000);  llowing();
   return;
 
 
