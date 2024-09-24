@@ -61,9 +61,9 @@ int loxReading[3];
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
 // PID Constatnts
-const double motKp = 2;
-const double motKi = 0.5;
-const double motKd = 0.7;   //0.8068;
+const double motKp = 0.666;
+const double motKi = 0.09321;
+const double motKd = 1.19;   //0.8068;
 
 double motSetpoint = 0.0;
 double motInput = 0.0;
