@@ -7,12 +7,20 @@
 #define LED_R	23
 #define LED_M	22
 
-// right
+// left
 #define MOT1A 33
 #define MOT1B 32
-// left
-#define MOT2A 25
-#define MOT2B 26
+// right
+#define MOT2A 26
+#define MOT2B 25
+float sampling_time = 0.05 ;
+float fc = 0.01 ;
+double alpha =(2*3.1415*sampling_time*fc)/(2*3.1415*sampling_time*fc+1) ;
+int prvError = 0 ;
+int error = 0 ;
+float outputError = 0 ;
+// Yi=aXi=(1-a)*Yi-1 ## calculating the output
+
 
 const int LOX_ADDR[3] = { 0x30, 0x31, 0x32};
 const int SHT_LOX[3] = { 18, 12, 05 };
@@ -103,6 +111,7 @@ void setup() {
   analogWrite(MOT2B, 255);
 
   lastMicros = micros();
+  prvError = 0 ;
 }
 
 void loop() {
@@ -114,7 +123,12 @@ void loop() {
    //Serial.print(counter);
   // Serial.print(" time is  ") ;
   // lastMicros = millis();
-  Serial.printf("%d  \n ", lox_reading[1]-lox_reading[2]);
-  delay(10);
+  error = lox_reading[1]-lox_reading[2] ;
+  // Yi=aXi+(1-a)*Yi-1 ## calculating the output
+
+
+  Serial.printf(" the error  %d \n ", error );
+
+
   //counter++ ;
 }

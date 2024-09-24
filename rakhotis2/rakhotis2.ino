@@ -16,12 +16,12 @@
 
 #define ENC2A 17
 #define ENC2B 16
-// right
+// left
 #define MOT1A 33
 #define MOT1B 32
-// left
-#define MOT2A 25
-#define MOT2B 26
+// right
+#define MOT2A 26
+#define MOT2B 25
 
 #define XSH_B 27
 #define XSH_L 12
@@ -61,9 +61,10 @@ int loxReading[3];
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
 // PID Constatnts
-const double motKp = 8.289;
-const double motKi = 7.584;
-const double motKd = 10 ;   //0.8068;
+const double motKp = 2;
+const double motKi = 0.5;
+const double motKd = 0.7;   //0.8068;
+
 double motSetpoint = 0.0;
 double motInput = 0.0;
 double motOutput = 0.0;
@@ -93,6 +94,7 @@ float Kp = 30.0;
 float Ki = 0.0;
 
 unsigned long now_ms, last_ms = 0;  //millis() timers
+byte ledState = 3 ;
 
 float yaw;  //Euler angle output
 
@@ -272,7 +274,7 @@ void IMUReset() {
 
 void MOTInit() {
   motPID.SetMode(AUTOMATIC);
-  motPID.SetOutputLimits(-127, 127);
+  motPID.SetOutputLimits(-255, 255);
   motPID.SetSampleTime(50);
 
   pinMode(MOT1A, OUTPUT);
@@ -346,11 +348,14 @@ void MOTForward(long durationMillis) {
 
     // right motor
     analogWrite(MOT1A, 0);
-    analogWrite(MOT1B, constrain(127 - motOutput, 0, 255));
+    analogWrite(MOT1B, constrain(255 + motOutput, 0, 255));
+   // analogWrite(MOT1B, 255);
 
     // left motor
     analogWrite(MOT2A, 0);
-    analogWrite(MOT2B, constrain(127 + motOutput, 0, 255));
+    analogWrite(MOT2B, constrain(255 - motOutput, 0, 255));
+    //analogWrite(MOT2B, 255);
+
 
     Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
     Serial.printf("   %d    %d     %d      %d  and my direction is %d \n", counts_right_pinB, counts_right_pinA, counts_left_pinA, counts_left_pinB), direction;
@@ -365,7 +370,7 @@ void MOTBrake() {
   analogWrite(MOT1B, 255);
   analogWrite(MOT2A, 255);
   analogWrite(MOT2B, 255);
-  delay(300);
+  delay(400);
 }
 
 void MOTTurn(bool isLeft) {
@@ -448,17 +453,17 @@ void MOTTurn3(bool isLeft) {
 void MOTTurn4(bool isLeft) {
   LOXRead();
   MOTBrake();
-  digitalWrite(MOT1A, LOW);
-  digitalWrite(MOT1B, LOW);
-  digitalWrite(MOT2A, LOW);
-  digitalWrite(MOT2B, LOW);
+  // digitalWrite(MOT1A, LOW);
+  // digitalWrite(MOT1B, LOW);
+  // digitalWrite(MOT2A, LOW);
+  // digitalWrite(MOT2B, LOW);
 
-  analogWrite(MOT1A, isLeft ? 0 : rotating_speed);
-  analogWrite(MOT1B, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2A, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2B, isLeft ? 0 : rotating_speed);
+  analogWrite(MOT1A, !isLeft ? 0 : rotating_speed);
+  analogWrite(MOT1B, !isLeft ? rotating_speed : 0);
+  analogWrite(MOT2A, !isLeft ? rotating_speed : 0);
+  analogWrite(MOT2B, !isLeft ? 0 : rotating_speed);
 
-  delay(500);
+  delay(380);
   MOTBrake();
 }
 
@@ -512,7 +517,7 @@ bool LOXRead() {
     if (lox[i].readRangeStatus() == 4)  // || lox[i].readRangeStatus() == 2
       loxReading[i] = 8191;
 
-    // loxReading[2] -= 30 ;
+    loxReading[1] -= 10 ;
     digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2));
     walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2);
     
@@ -626,12 +631,12 @@ void wallfollowing() {
   LOXRead();
   if (!walls[left]) {
 
-    MOTForward(400);
+    MOTForward(220);
     MOTTurn4(true);
-    MOTForward(400);
+    MOTForward(280);
   }
 
-else if ((loxReading[forward] < WIDTH / 2) && !(lox[forward].readRangeStatus() == 2)) {
+else if ((loxReading[forward] < WIDTH * 2/3)) {
   MOTTurn4(false);
 }
 
@@ -640,6 +645,21 @@ else {
 }
 }
 
+void blink(){
+
+    if (millis() > last_ms + 1000){
+      ledState--; 
+    digitalWrite(LED_L,(ledState==2));
+    digitalWrite(LED_R,(ledState==1));
+    digitalWrite(LED_M,(ledState==0));
+
+    if (!ledState)  ledState=3;
+
+    last_ms = millis();
+    }
+    
+
+}
 
 void setup() {
   Serial.begin(115200);
@@ -655,15 +675,21 @@ void setup() {
   LOXInit();
   Serial.println(" initialzing motors  ");
   MOTInit();
-  IMUInit(ANG_500);
-  encoderInit();
+  //IMUInit(ANG_500);
+  //encoderInit();
   lastMicros = micros();
 
   pinMode(36, INPUT);
   pinMode(39, INPUT);
 
+  pinMode(LED_L,OUTPUT);
+  pinMode(LED_R,OUTPUT);
+  pinMode(LED_M,OUTPUT);
 
-  // while (digitalRead(36) && digitalRead(39)) {
+
+  while (digitalRead(36) && digitalRead(39)) 
+  ;
+  //{
 
   //   if (digitalRead(36) == LOW) {
   //     state = 1;
@@ -675,10 +701,7 @@ void setup() {
   //     Serial.println("borham following");
   //   }
   // }
-  state = 1;
-
-
-  delay(2000);
+  
   // MOTTurn2(true) ;
 }
 
@@ -689,11 +712,11 @@ void loop() {
   // Serial.printf("[%d] ", micros() - lastMicros);
   // lastMicros = micros();
   //Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
-
- // MOTForward(1);
+  wallfollowing();
+  // MOTForward(1);
   // leftWallfollowing2();
   // if (state == 1) {
-  //   wallfollowing();
+    // wallfollowing();
   // } else if (state == 2) {
   //   leftWallfollowing2();
   // }
@@ -703,6 +726,7 @@ void loop() {
   //  delay(2000);
   //  MOTTurn2(true);
   //  delay(2000);  llowing();
+ // blink();
   return;
 
 
