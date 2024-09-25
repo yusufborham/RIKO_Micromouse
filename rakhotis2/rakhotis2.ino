@@ -1,6 +1,7 @@
-  #include <Adafruit_VL53L0X.h>
+#include <Adafruit_VL53L0X.h>
 #include <Wire.h>
 #include <PID_v1.h>
+#include "quaternionFilters.h"
 
 #define GYRO_CONFIG 0x1B
 
