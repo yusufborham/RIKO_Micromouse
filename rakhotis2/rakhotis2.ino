@@ -1,4 +1,4 @@
-#include <Adafruit_VL53L0X.h>
+  #include <Adafruit_VL53L0X.h>
 #include <Wire.h>
 #include <PID_v1.h>
 
@@ -44,6 +44,9 @@
 #define left 1
 #define right 2
 
+TwoWire Wire = TwoWire(0);
+TwoWire Wire1 = TwoWire(1);
+
 int state = 0;
 // initialzing LEDS // middle // left // right // back
 
@@ -61,7 +64,7 @@ int loxReading[3];
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
 // PID Constatnts
-const double motKp = 0.666;
+const double motKp = 1;
 const double motKi = 0.09321;
 const double motKd = 1.19;   //0.8068;
 
@@ -132,16 +135,16 @@ enum FS_SEL {
 void IMUInit(FS_SEL myFS_SEL) {
   // initialize sensor
   // defaults for gyro and accel sensitivity are 250 dps and +/- 2 g
-  Wire.beginTransmission(MPU_addr);
-  Wire.write(0x6B);  // PWR_MGMT_1 register
-  Wire.write(0);     // set to zero (wakes up the MPU-6050)
-  Wire.endTransmission(true);
+  Wire1.beginTransmission(MPU_addr);
+  Wire1.write(0x6B);  // PWR_MGMT_1 register
+  Wire1.write(0);     // set to zero (wakes up the MPU-6050)
+  Wire1.endTransmission(true);
 
   delay(100);
-  Wire.beginTransmission(MPU_addr);
-  Wire.write(GYRO_CONFIG);
-  Wire.write(myFS_SEL);
-  Wire.endTransmission();
+  Wire1.beginTransmission(MPU_addr);
+  Wire1.write(GYRO_CONFIG);
+  Wire1.write(myFS_SEL);
+  Wire1.endTransmission();
   ang_div = 2 * (myFS_SEL ? ((myFS_SEL & 0XF7) ? ((myFS_SEL & 0XEF) ? ((myFS_SEL & 0XE7) ? 2000 : 20000) : 1000) : 500) : 250);
   Serial.println(ang_div);
 }
@@ -158,11 +161,11 @@ void calibrate() {
   float Gxyz[3];
 
 
-  Wire.beginTransmission(MPU_addr);
-  Wire.write(0x47);  // starting with register 0x3B (ACCEL_XOUT_H)
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU_addr, 2);        // request a total of 14 registers
-  gz = Wire.read() << 8 | Wire.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
+  Wire1.beginTransmission(MPU_addr);
+  Wire1.write(0x47);  // starting with register 0x3B (ACCEL_XOUT_H)
+  Wire1.endTransmission(false);
+  Wire1.requestFrom(MPU_addr, 2);        // request a total of 14 registers
+  gz = Wire1.read() << 8 | Wire1.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
 
   // calibrate gyro upon startup. SENSOR MUST BE HELD STILL (a few seconds)
   i++;
@@ -232,11 +235,11 @@ float IMURead() {
   float Gxyz[3];
 
 
-  Wire.beginTransmission(MPU_addr);
-  Wire.write(0x47);  // starting with register 0x47 (GYRO_ZOUT_H)
-  Wire.endTransmission(false);
-  Wire.requestFrom(MPU_addr, 2);        // request a total of 2 registers
-  gz = Wire.read() << 8 | Wire.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
+  Wire1.beginTransmission(MPU_addr);
+  Wire1.write(0x47);  // starting with register 0x47 (GYRO_ZOUT_H)
+  Wire1.endTransmission(false);
+  Wire1.requestFrom(MPU_addr, 2);        // request a total of 2 registers
+  gz = Wire1.read() << 8 | Wire1.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
 
 
   Gxyz[0] = ((float)gx - G_off[0]) * gscale;  //500 LSB(d/s) default to radians/s
@@ -517,7 +520,6 @@ bool LOXRead() {
     if (lox[i].readRangeStatus() == 4)  // || lox[i].readRangeStatus() == 2
       loxReading[i] = 8191;
 
-    loxReading[1] -= 10 ;
     digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2));
     walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2);
     
@@ -664,6 +666,8 @@ void blink(){
 void setup() {
   Serial.begin(115200);
   Wire.begin(SDA, SCL);
+  Wire1.begin(SDIO,SCKL);
+
 
   while (!Serial) {
     delay(1);
@@ -676,6 +680,7 @@ void setup() {
   Serial.println(" initialzing motors  ");
   MOTInit();
   //IMUInit(ANG_500);
+  calibrate();
   //encoderInit();
   lastMicros = micros();
 
@@ -713,7 +718,7 @@ void loop() {
   // lastMicros = micros();
   //Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
   wallfollowing();
-  // MOTForward(1);
+   //MOTForward(1);
   // leftWallfollowing2();
   // if (state == 1) {
     // wallfollowing();
