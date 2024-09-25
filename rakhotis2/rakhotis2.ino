@@ -1,7 +1,7 @@
 #include <Adafruit_VL53L0X.h>
 #include <Wire.h>
 #include <PID_v1.h>
-#include "quaternionFilters.h"
+
 
 #define GYRO_CONFIG 0x1B
 
@@ -45,9 +45,6 @@
 #define left 1
 #define right 2
 
-TwoWire Wire = TwoWire(0);
-TwoWire Wire1 = TwoWire(1);
-
 int state = 0;
 // initialzing LEDS // middle // left // right // back
 
@@ -80,33 +77,20 @@ long lastMicros = 0;
 
 // IMU initialzing
 
-int MPU_addr = 0x68;
 float threshold = 0.1;
 float angle_threshold = 80;
 float rotating_speed = 100;
-int cal_gyro = 1;  //set to zero to use gyro calibration offsets below.
-float ang_div = 0;
 
-float G_off[3] = { 0., 0., 0. };                  //raw offsets, determined for gyro at rest
-#define gscale ((500. / 32768.0) * (PI / 180.0))  //gyro default 250 LSB per d/s -> rad/s
-
-
-float q[4] = { 1.0, 0.0, 0.0, 0.0 };
-
-
-float Kp = 30.0;
-float Ki = 0.0;
-
-unsigned long now_ms, last_ms = 0;  //millis() timers
 byte ledState = 3 ;
 
-float yaw;  //Euler angle output
+
 
 /////// encoders ////////
 
-#define ticks 10
+#define ticks 0.055
+//200 * tick = cir 11.14
 
-float distance_turn_threshold = 3000;
+float  distance_turn_threshold = 3000;
 
 long counts_left_pinA = 0;
 long counts_left_pinB = 0;
@@ -126,155 +110,8 @@ float cell_location[2] = { 0, 0 };
 
 byte direction = 0;  // 0 -> north , 1-> east , 2-> south , 3-> west
 //////////////////////////////////////////////////////////////////////////
-enum FS_SEL {
-  ANG_250 = 0X00,
-  ANG_500 = 0X08,
-  ANG_1000 = 0X10,
-  ANG_2000 = 0X18
-};
-
-void IMUInit(FS_SEL myFS_SEL) {
-  // initialize sensor
-  // defaults for gyro and accel sensitivity are 250 dps and +/- 2 g
-  Wire1.beginTransmission(MPU_addr);
-  Wire1.write(0x6B);  // PWR_MGMT_1 register
-  Wire1.write(0);     // set to zero (wakes up the MPU-6050)
-  Wire1.endTransmission(true);
-
-  delay(100);
-  Wire1.beginTransmission(MPU_addr);
-  Wire1.write(GYRO_CONFIG);
-  Wire1.write(myFS_SEL);
-  Wire1.endTransmission();
-  ang_div = 2 * (myFS_SEL ? ((myFS_SEL & 0XF7) ? ((myFS_SEL & 0XEF) ? ((myFS_SEL & 0XE7) ? 2000 : 20000) : 1000) : 500) : 250);
-  Serial.println(ang_div);
-}
 
 
-void calibrate() {
-  static unsigned int i = 0;  //loop counter
-  static long gsum[3] = { 0 };
-
-  int16_t gx, gy, gz;
-  int16_t Tmp;  //temperature
-
-  //scaled data as vector
-  float Gxyz[3];
-
-
-  Wire1.beginTransmission(MPU_addr);
-  Wire1.write(0x47);  // starting with register 0x3B (ACCEL_XOUT_H)
-  Wire1.endTransmission(false);
-  Wire1.requestFrom(MPU_addr, 2);        // request a total of 14 registers
-  gz = Wire1.read() << 8 | Wire1.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
-
-  // calibrate gyro upon startup. SENSOR MUST BE HELD STILL (a few seconds)
-  i++;
-  if (cal_gyro) {
-
-    gsum[0] += gx;
-    gsum[1] += gy;
-    gsum[2] += gz;
-    if (i == 500) {
-      cal_gyro = 0;  //turn off calibration and print results
-
-      for (char k = 0; k < 3; k++) G_off[k] = ((float)gsum[k]) / 500.0;
-
-      Serial.print("G_Off: ");
-      Serial.print(G_off[0]);
-      Serial.print(", ");
-      Serial.print(G_off[1]);
-      Serial.print(", ");
-      Serial.print(G_off[2]);
-      Serial.println();
-    }
-  }
-}
-
-void Mahony_update(float gx, float gy, float gz, float deltat) {
-  float recipNorm;
-  float qa, qb, qc;
-
-  // removed unused accelerometer terms
-
-  // Integrate rate of change of quaternion, given by gyro term
-  // rate of change = current orientation quaternion (qmult) gyro rate
-  if (abs(gz) > threshold) {
-    deltat = 0.5 * deltat;
-    gx *= deltat;  // pre-multiply common factors
-    gy *= deltat;
-    gz *= deltat;
-    qa = q[0];
-    qb = q[1];
-    qc = q[2];
-
-    //add qmult*delta_t to current orientation
-    q[0] += (-qb * gx - qc * gy - q[3] * gz);
-    q[1] += (qa * gx + qc * gz - q[3] * gy);
-    q[2] += (qa * gy - qb * gz + q[3] * gx);
-    q[3] += (qa * gz + qb * gy - qc * gx);
-
-    // Normalise quaternion
-    recipNorm = 1.0 / sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-    q[0] = q[0] * recipNorm;
-    q[1] = q[1] * recipNorm;
-    q[2] = q[2] * recipNorm;
-    q[3] = q[3] * recipNorm;
-  }
-}
-
-
-// AHRS loop
-float IMURead() {
-  static float deltat = 0;                 //loop time in seconds
-  static unsigned long now = 0, last = 0;  //micros() timers
-                                           // static long gsum[3] = {0};
-  //raw data
-  int16_t gx, gy, gz;
-
-  //scaled data as vector
-  float Gxyz[3];
-
-
-  Wire1.beginTransmission(MPU_addr);
-  Wire1.write(0x47);  // starting with register 0x47 (GYRO_ZOUT_H)
-  Wire1.endTransmission(false);
-  Wire1.requestFrom(MPU_addr, 2);        // request a total of 2 registers
-  gz = Wire1.read() << 8 | Wire1.read();  // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
-
-
-  Gxyz[0] = ((float)gx - G_off[0]) * gscale;  //500 LSB(d/s) default to radians/s
-  Gxyz[1] = ((float)gy - G_off[1]) * gscale;
-  Gxyz[2] = ((float)gz - G_off[2]) * gscale;
-
-  //  snprintf(s,sizeof(s),"mpu raw %d,%d,%d,%d,%d,%d",ax,ay,az,gx,gy,gz);
-  //  Serial.println(s);
-
-  now = micros();
-  deltat = (now - last) * 1.0e-6;  //seconds since last update
-  last = now;
-
-  Mahony_update(Gxyz[0], Gxyz[1], Gxyz[2], deltat);
-
-  // Compute Tait-Bryan angles. Strictly valid only for approximately level movemen
-  //conventional yaw increases clockwise from North. Not that the MPU-6050 knows where North is.
-  yaw = -atan2((q[1] * q[2] + q[0] * q[3]), 0.5 - (q[2] * q[2] + q[3] * q[3]));
-  // to degrees
-  yaw *= 180.0 / PI;
-  //if (yaw < 0) yaw += 360.0;  //compass circle
-  //ccrrect for local magnetic declination here
-
-
-  return (yaw);
-}
-
-void IMUReset() {
-  q[0] = 1.0;
-  q[1] = 0.0;
-  q[2] = 0.0;
-  q[3] = 0.0;
-  yaw = 0;
-}
 
 void MOTInit() {
   motPID.SetMode(AUTOMATIC);
@@ -292,6 +129,7 @@ void MOTForward(long durationMillis) {
   long startMillis = millis();
   while (millis() - startMillis < durationMillis) {
     LOXRead();
+    measureDistance();
 
     static double leftSensor = 0, rightSensor = 0;
     leftSensor = loxReading[1];
@@ -352,22 +190,48 @@ void MOTForward(long durationMillis) {
 
     // right motor
     analogWrite(MOT1A, 0);
-    analogWrite(MOT1B, constrain(255 + motOutput, 0, 255));
-   // analogWrite(MOT1B, 255);
+    //analogWrite(MOT1B, constrain(255 + motOutput, 0, 255));
+    analogWrite(MOT1B, 127);
 
     // left motor
     analogWrite(MOT2A, 0);
-    analogWrite(MOT2B, constrain(255 - motOutput, 0, 255));
-    //analogWrite(MOT2B, 255);
+    //analogWrite(MOT2B, constrain(255 - motOutput, 0, 255));
+    analogWrite(MOT2B, 127);
 
 
     Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
-    Serial.printf("   %d    %d     %d      %d  and my direction is %d \n", counts_right_pinB, counts_right_pinA, counts_left_pinA, counts_left_pinB), direction;
+    //Serial.printf(" distance_right  is   %d  distance_left   %d and distance_avg is   %d   \n", distance_right, distance_left, distance_avg);
+    Serial.printf("right %d  left %d \n ",counts_right_pinA ,counts_left_pinA);
   }
 }
 
 
+void moveforward(){
+  resetDistance();
+  do {
+    MOTForward(1);
+    measureDistance();
+  
+    // switch (direction){
+    //   case 0:
+    //   Ycell++;
+    //   break;
 
+    //   case 1:
+    //   Xcell++;
+    //   break;
+
+    //   case 3:
+    //   Ycell--;
+    //   break;
+
+    //   case 4:
+    //   Xcell--;
+    //   break;
+    // }
+   // Serial.print("Xcell=%ld & Ycell =%ld",Xcell,Ycell);
+  }while(distance_avg>=18);
+}
 
 void MOTBrake() {
   analogWrite(MOT1A, 255);
@@ -377,31 +241,9 @@ void MOTBrake() {
   delay(400);
 }
 
-void MOTTurn(bool isLeft) {
-  IMUReset();
 
-  digitalWrite(MOT1A, LOW);
-  digitalWrite(MOT1B, LOW);
-  digitalWrite(MOT2A, LOW);
-  digitalWrite(MOT2B, LOW);
 
-  analogWrite(MOT1A, isLeft ? 0 : rotating_speed);
-  analogWrite(MOT1B, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2A, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2B, isLeft ? 0 : rotating_speed);
-
-  do {
-    IMURead();
-    LOXRead();
-    Serial.println(yaw);
-  } while (abs(yaw) < angle_threshold);
-  Serial.println("finished rotation ");
-  MOTBrake();
-  LOXRead();
-  delay(200);
-}
-
-void MOTTurn2(bool isLeft) {
+void Turn2(bool isLeft) {
   resetDistance();
 
   digitalWrite(MOT1A, LOW);
@@ -418,7 +260,7 @@ void MOTTurn2(bool isLeft) {
     LOXRead();
     measureDistance();
     Serial.printf("right distance is %f and the left distance is %f and the averafge distance is %f \n", distance_right, distance_left, distance_avg);
-  } while (isLeft ? (distance_avg < 1000) : (distance_avg < 1000));
+  } while (isLeft ? (distance_avg < distance_turn_threshold) : (distance_avg < distance_turn_threshold));
   Serial.println("finished rotation ");
   isLeft ? (direction ? direction = 3 : direction -= 1) : direction = (direction + 1) % 4;
   Serial.println(direction);
@@ -426,35 +268,28 @@ void MOTTurn2(bool isLeft) {
   delay(200);
 }
 
-void MOTTurn3(bool isLeft) {
-  resetDistance();
-  LOXDisable();
-  IMUReset();
+void turn(bool isLeft) {
+      MOTBrake();
+      int target_angle = 90;
+      int current_angle = 0;
+      int error = target_angle - current_angle;
+      int control_signal = 0;
+      int Kp = 2;
 
-  digitalWrite(MOT1A, LOW);
-  digitalWrite(MOT1B, LOW);
-  digitalWrite(MOT2A, LOW);
-  digitalWrite(MOT2B, LOW);
+      while (abs(error) > 5) { 
+          // update the angle
+          error = target_angle - current_angle;
+          control_signal = Kp * error;
+          analogWrite(MOT1A, !isLeft ? 0 : control_signal);
+          analogWrite(MOT1B, !isLeft ? control_signal : 0);
+          analogWrite(MOT2A, !isLeft ? control_signal : 0);
+          analogWrite(MOT2B, !isLeft ? 0 : control_signal);
 
-  analogWrite(MOT1A, isLeft ? 0 : rotating_speed);
-  analogWrite(MOT1B, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2A, isLeft ? rotating_speed : 0);
-  analogWrite(MOT2B, isLeft ? 0 : rotating_speed);
-
-  do {
-    LOXRead();
-    IMURead();
-    measureDistance();
-    Serial.printf("the average distance is %f and ther angle is %f  \n", distance_avg, yaw);
-  } while (distance_avg < distance_turn_threshold && yaw < angle_threshold);
-  Serial.println("finished rotation ");
-  isLeft ? (direction ? direction = 3 : direction -= 1) : direction = (direction + 1) % 4;
-  Serial.println(direction);
-  MOTBrake();
-  LOXInit();
+      }
+      MOTBrake();
 }
-
-void MOTTurn4(bool isLeft) {
+void
+ MOTTurn4(bool isLeft) {
   LOXRead();
   MOTBrake();
   // digitalWrite(MOT1A, LOW);
@@ -495,7 +330,7 @@ void LOXInit() {
   for (int i = 0; i < 3; i++) {
     digitalWrite(SHT_LOX[i], HIGH);
     delay(10);
-    if (!lox[i].begin(LOX_ADDR[i])) {
+    if (!lox[i].begin(LOX_ADDR[i], false, &Wire1)) {
       Serial.print(F("Failed to boot VL53L0X #"));
       Serial.println(i);
       while (1)
@@ -539,7 +374,7 @@ bool LOXRead() {
 //   return true;
 // }
 void IRAM_ATTR rightEncoderPinAHandle() {
-  // digitalRead(ENC1B) ? counts_left++ : counts_left-- ;
+  // digitalRead(ENC1B) ? s_left++ : counts_left-- ;
   if (!flag_right_encoder) {
     counts_right_pinB++;
   }
@@ -602,72 +437,72 @@ void encoderInit() {
   attachInterrupt(digitalPinToInterrupt(ENC1A), leftEncoderPinBHandle, FALLING);
 }
 
-void leftWallfollowing() {
-  LOXRead();
+// void leftWallfollowing() {
+//   LOXRead();
 
-  if (loxReading[forward] > WIDTH / 2) {
-    MOTForward(1);
-  } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
-    MOTTurn2(true);
-  }
+//   if (loxReading[forward] > WIDTH / 2) {
+//     MOTForward(1);
+//   } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
+//     Turn2(true);
+//   }
 
-  else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
-    MOTTurn2(false);
-  }
-}
+//   else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
+//     Turn2(false);
+//   }
+// }
 
-void leftWallfollowing2() {
-  LOXRead();
+// void leftWallfollowing2() {
+//   LOXRead();
 
-  if (loxReading[forward] > WIDTH / 2) {
-    MOTForward(1);
-  } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
-    MOTTurn4(true);
-  }
+//   if (loxReading[forward] > WIDTH / 2) {
+//     MOTForward(1);
+//   } else if ((loxReading[forward] < WIDTH / 2) && !walls[left] && !(lox[forward].readRangeStatus() == 2)) {
+//     MOTTurn4(true);
+//   }
 
-  else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
-    MOTTurn4(false);
-  }
-}
+//   else if (loxReading[forward] < WIDTH / 2 && walls[left]) {
+//     MOTTurn4(false);
+//   }
+// }
 
-void wallfollowing() {
-  LOXRead();
-  if (!walls[left]) {
+// void wallfollowing() {
+//   LOXRead();
+//   if (!walls[left]) {
 
-    MOTForward(220);
-    MOTTurn4(true);
-    MOTForward(280);
-  }
+//     MOTForward(220);
+//     MOTTurn4(true);
+//     MOTForward(280);
+//   }
 
-else if ((loxReading[forward] < WIDTH * 2/3)) {
-  MOTTurn4(false);
-}
+// else if ((loxReading[forward] < WIDTH * 2/3)) {
+//   MOTTurn4(false);
+// }
 
-else {
-  MOTForward(1);
-}
-}
+// else {
+//   MOTForward(1);
+// }
+//}
 
-void blink(){
+// void blink(){
 
-    if (millis() > last_ms + 1000){
-      ledState--; 
-    digitalWrite(LED_L,(ledState==2));
-    digitalWrite(LED_R,(ledState==1));
-    digitalWrite(LED_M,(ledState==0));
+//     if (millis() > last_ms + 1000){
+//       ledState--; 
+//     digitalWrite(LED_L,(ledState==2));
+//     digitalWrite(LED_R,(ledState==1));
+//     digitalWrite(LED_M,(ledState==0));
 
-    if (!ledState)  ledState=3;
+//     if (!ledState)  ledState=3;
 
-    last_ms = millis();
-    }
+//     last_ms = millis();
+//     }
     
 
-}
+//}
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(SDA, SCL);
-  Wire1.begin(SDIO,SCKL);
+  Wire1.begin(SDA, SCL);
+ // Wire.begin(SDIO,SCKL);
 
 
   while (!Serial) {
@@ -680,9 +515,8 @@ void setup() {
   LOXInit();
   Serial.println(" initialzing motors  ");
   MOTInit();
-  //IMUInit(ANG_500);
-  calibrate();
-  //encoderInit();
+  
+  encoderInit();
   lastMicros = micros();
 
   pinMode(36, INPUT);
@@ -718,8 +552,8 @@ void loop() {
   // Serial.printf("[%d] ", micros() - lastMicros);
   // lastMicros = micros();
   //Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
-  wallfollowing();
-   //MOTForward(1);
+   //wallfollowing();
+   MOTForward(1);
   // leftWallfollowing2();
   // if (state == 1) {
     // wallfollowing();
