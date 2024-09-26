@@ -21,7 +21,6 @@ AccelData accelData;
 GyroData gyroData;
 MagData magData;
 
-float pitch, yaw, roll;  // MAKE GLOBAL
 float deltat = 0.0f;
 
 uint32_t lastUpdate = 0;
@@ -309,4 +308,5 @@ void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, fl
   q[1] = q2 * norm;
   q[2] = q3 * norm;
   q[3] = q4 * norm;
+  
 }
