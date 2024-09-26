@@ -56,11 +56,14 @@ const int SHT_LOX[3] = { 18, 12, 05 };
 
 Adafruit_VL53L0X lox[3] = { Adafruit_VL53L0X(), Adafruit_VL53L0X(), Adafruit_VL53L0X() };
 int loxReading[3];
-
+bool forward_flag = 1;
+bool left_turn_flag = 0;
+unsigned long t = 0;
 // wall flags
 // if true means there is a WALL
 // wall array // forward / LEFT / RIGHT
 bool walls[3] = { 0, 0, 0 };
+bool walls_prv[3] = { 0, 1, 1 };
 // PID Constatnts
 const double motKp = 4;
 const double motKi = 2;
@@ -129,7 +132,7 @@ byte direction = 0;  // 0 -> north , 1-> east , 2-> south , 3-> west
 //////////////////////////////////////////////////////////////////////////
 float pitch, yaw, roll;  // MAKE GLOBAL
 
-
+int mode = 0;
 
 void MOTInit() {
   motPID.SetMode(AUTOMATIC);
@@ -157,14 +160,14 @@ void MOTInit() {
 //       motInput = leftSensor - rightSensor;
 //       motPID.Compute();
 //       pid_case = 1;
-      
+
 //     }
 
 //     else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH) {  // < 340
 //       (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - WIDTH)) : (motInput = (leftSensor - WIDTH) - rightSensor);
 //       motPID.Compute();
 //       pid_case = 2;
-       
+
 //     }
 
 //     else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)) {  // < 510
@@ -172,13 +175,13 @@ void MOTInit() {
 //       //motOutput = 0;
 //       motPID.Compute();
 //       pid_case = 3;
-      
+
 
 //     } else {
-     
+
 //       pid_case = 0;
 //       motOutput = 0;
-      
+
 //     }
 
 
@@ -212,59 +215,58 @@ void MOTInit() {
 //     Serial.printf("right %d  left %d \n ", counts_right_pinA, counts_left_pinA);
 //   }
 // }
- void MOTForward() {
-    //IMUUpdate();
-    LOXRead();
-    //measureDistance();
+void MOTForward() {
+  IMUUpdate();
+  LOXRead();
 
-    static double leftSensor = 0, rightSensor = 0;
-    leftSensor = loxReading[1];
-    rightSensor = loxReading[2];
+  //measureDistance();
 
-    if (leftSensor + rightSensor <= WIDTH) {  // < 170
-      motInput = leftSensor - rightSensor;
-      motPID.Compute();
-      pid_case = 1;
-      
-    }
+  static double leftSensor = 0, rightSensor = 0;
+  leftSensor = loxReading[1];
+  rightSensor = loxReading[2];
 
-    else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH) {  // < 340
-      (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - WIDTH)) : (motInput = (leftSensor - WIDTH) - rightSensor);
-      motPID.Compute();
-      pid_case = 2;
-       
-    }
+  if (leftSensor + rightSensor <= WIDTH) {  // < 170
+    motInput = leftSensor - rightSensor;
+    motPID.Compute();
+    pid_case = 1;
 
-    else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)) {  // < 510
-      (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - 2 * WIDTH)) : (motInput = (leftSensor - 2 * WIDTH) - rightSensor);
-      //motOutput = 0;
-      motPID.Compute();
-      pid_case = 3;
-      
+  }
 
-    } else {
-     
-      pid_case = 0;
-      motOutput = 0;
-      
-    }
+  else if (leftSensor + rightSensor > WIDTH && leftSensor + rightSensor < 2 * WIDTH) {  // < 340
+    (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - WIDTH)) : (motInput = (leftSensor - WIDTH) - rightSensor);
+    motPID.Compute();
+    pid_case = 2;
+
+  }
+
+  else if (leftSensor + rightSensor > 2 * WIDTH && leftSensor + rightSensor < 3 * WIDTH && !(lox[1].readRangeStatus() == 2) && !(lox[2].readRangeStatus() == 2)) {  // < 510
+    (rightSensor > leftSensor) ? (motInput = leftSensor - (rightSensor - 2 * WIDTH)) : (motInput = (leftSensor - 2 * WIDTH) - rightSensor);
+    //motOutput = 0;
+    motPID.Compute();
+    pid_case = 3;
 
 
-    // right motor
-    analogWrite(MOT1A, 0);
-    analogWrite(MOT1B, constrain(255 + motOutput, 0, 255));
-    //analogWrite(MOT1B, 127);
+  } else {
 
-    // left motor
-    analogWrite(MOT2A, 0);
-    analogWrite(MOT2B, constrain(255 - motOutput, 0, 255));
-    //analogWrite(MOT2B, 127);
+    pid_case = 0;
+    motOutput = 0;
+  }
 
 
-    Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
-    //Serial.printf(" distance_right  is   %d  distance_left   %d and distance_avg is   %d   \n", distance_right, distance_left, distance_avg);
-    Serial.printf("right %d  left %d \n ", counts_right_pinA, counts_left_pinA);
-  
+  // right motor
+  analogWrite(MOT1A, 0);
+  analogWrite(MOT1B, constrain(255 + motOutput, 0, 255));
+  //analogWrite(MOT1B, 127);
+
+  // left motor
+  analogWrite(MOT2A, 0);
+  analogWrite(MOT2B, constrain(255 - motOutput, 0, 255));
+  //analogWrite(MOT2B, 127);
+
+
+  Serial.printf("F: %d, L: %d, R: %d, B: %d, motOutput: %f  and my case is %d  and my sum is  %d ", loxReading[0], loxReading[1], loxReading[2], motOutput, pid_case, loxReading[1] + loxReading[2]);
+  //Serial.printf(" distance_right  is   %d  distance_left   %d and distance_avg is   %d   \n", distance_right, distance_left, distance_avg);
+  Serial.printf("right %d  left %d \n ", counts_right_pinA, counts_left_pinA);
 }
 
 
@@ -310,7 +312,7 @@ void TurnWithEncoder(bool isLeft) {
     LOXRead();
     measureDistance();
     Serial.printf("right distance is %f and the left distance is %f and the averafge distance is %f \n", distance_right, distance_left, distance_avg);
-  } while ( distance_left < distance_turn_threshold);
+  } while (distance_left < distance_turn_threshold);
   Serial.println("finished rotation ");
   isLeft ? (direction ? direction = 3 : direction -= 1) : direction = (direction + 1) % 4;
   Serial.println(direction);
@@ -422,29 +424,176 @@ void encoderInit() {
   attachInterrupt(digitalPinToInterrupt(ENC1A), leftEncoderPinBHandle, FALLING);
 }
 
-void wallfollowing() {
+void leftAdv() {
   LOXRead();
   if (!walls[left]) {
+    forward_flag = 0;
+    left_turn_flag = 1;
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
     digitalWrite(LED_L, HIGH);
     // MOTForward(250);
-    moveforward();
+    //moveforward();
+
+    t = millis();
+    while (millis() > t + 260)
+      MOTForward();
+
     TurnWithIMU(true);
-    moveforward();
+
+    if (walls[forward]) {
+      TurnWithIMU(true);
+    } else {
+      t = millis();
+      while (millis() > t + 260)
+        MOTForward();
+    }
+    // moveforward();
     // MOTForward(250);
+    digitalWrite(LED_L, LOW);
+
+  }
+
+  else if (walls[forward]) {
+    forward_flag = 0;
+    left_turn_flag = 0;
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
+    digitalWrite(LED_R, HIGH);
+    TurnWithIMU(false);
+    digitalWrite(LED_R, LOW);
+
+  }
+
+  else if (!walls[forward] && left_turn_flag ? ((!forward_flag) ? !walls_prv[left] : 1) : ((!forward_flag) ? !walls_prv[right] : 1)) {  // if no wall infront of you and before that you made a right turn check if brfore turning you had a wall to your right or not
+    forward_flag = 1;
+    left_turn_flag = 0;
+    digitalWrite(LED_M, HIGH);
+    MOTForward();
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
+
+    digitalWrite(LED_M, LOW);
+  }
+}
+
+void rightAdv() {
+  LOXRead();
+  if (!walls[right]) {
+    forward_flag = 0;
+    left_turn_flag = 1;
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
+    digitalWrite(LED_R, HIGH);
+    // MOTForward(250);
+    //moveforward();
+
+    t = millis();
+    while (millis() > t + 260)
+      MOTForward();
+
+    TurnWithIMU(false);
+
+    if (walls[forward]) {
+      TurnWithIMU(false);
+    } else {
+      t = millis();
+      while (millis() > t + 260)
+        MOTForward();
+    }
+    // moveforward();
+    // MOTForward(250);
+    digitalWrite(LED_R, LOW);
+
+  }
+
+  else if (walls[forward]) {
+    forward_flag = 0;
+    left_turn_flag = 0;
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
+    digitalWrite(LED_L, HIGH);
+    TurnWithIMU(true);
+    digitalWrite(LED_L, LOW);
+
+  }
+
+  else if (!walls[forward] && left_turn_flag ? ((!forward_flag) ? !walls_prv[right] : 1) : ((!forward_flag) ? !walls_prv[left] : 1)) {  // if no wall infront of you and before that you made a right turn check if brfore turning you had a wall to your right or not
+    forward_flag = 1;
+    left_turn_flag = 0;
+    digitalWrite(LED_M, HIGH);
+    MOTForward();
+    walls_prv[forward] = walls[forward];
+    walls_prv[left] = walls[left];
+    walls_prv[right] = walls[right];
+
+    digitalWrite(LED_M, LOW);
+  }
+}
+
+void leftNorm() {
+  LOXRead();
+  IMUUpdate();
+  if (!walls[left]) {
+    digitalWrite(LED_L, HIGH);
+    //moveforward();
+    long startTime = millis();
+    while (millis() < startTime + 260)
+      MOTForward();
+    TurnWithIMU(true);
+    //moveforward();
+    startTime = millis();
+    while (millis() < startTime + 260)
+      MOTForward();
     digitalWrite(LED_L, LOW);
   }
 
-else if ((loxReading[forward] < WIDTH * 0.7 )) {
-  digitalWrite(LED_R, HIGH);
-  TurnWithIMU(false);
-  digitalWrite(LED_R, LOW);
+  else if (walls[forward]) {  // fe 7eta odamo
+    digitalWrite(LED_R, HIGH);
+    TurnWithIMU(false);
+    digitalWrite(LED_R, LOW);
+  }
+
+  else {
+    digitalWrite(LED_M, HIGH);
+    MOTForward();
+    digitalWrite(LED_M, LOW);
+  }
 }
 
-else {
-  digitalWrite(LED_M, HIGH);
-  MOTForward();
-  digitalWrite(LED_M, LOW);
-}
+void rightNorm() {
+  LOXRead();
+  IMUUpdate();
+  if (!walls[right]) {
+    digitalWrite(LED_R, HIGH);
+    //moveforward();
+    long startTime = millis();
+    while (millis() < startTime + 260)
+      MOTForward();
+    TurnWithIMU(false);
+    //moveforward();
+    startTime = millis();
+    while (millis() < startTime + 260)
+      MOTForward();
+    digitalWrite(LED_R, LOW);
+  }
+
+  else if (walls[forward]) {  // fe 7eta odamo
+    digitalWrite(LED_L, HIGH);
+    TurnWithIMU(true);
+    digitalWrite(LED_L, LOW);
+  }
+
+  else {
+    digitalWrite(LED_M, HIGH);
+    MOTForward();
+    digitalWrite(LED_M, LOW);
+  }
 }
 
 void setup() {
@@ -475,27 +624,67 @@ void setup() {
   pinMode(LED_M, OUTPUT);
 
   // xTaskCreate(
-  //   Task1,             
-  //   "Task 1",          
-  //   1000,              
-  //   NULL,             
-  //   1,                 
-  //   &Task1Handle      
+  //   Task1,
+  //   "Task 1",
+  //   1000,
+  //   NULL,
+  //   1,
+  //   &Task1Handle
   // );
 
   // xTaskCreate(
-  //   Task2,             
-  //   "Task 2",          
-  //   1000,              
-  //   NULL,             
-  //   1,                 
-  //   &Task2Handle      
+  //   Task2,
+  //   "Task 2",
+  //   1000,
+  //   NULL,
+  //   1,
+  //   &Task2Handle
   // );
 
+  randomSeed(1);
   Serial.println("Press any button..");
-  while (digitalRead(36) && digitalRead(39))
-    ; 
+  // while (digitalRead(36) && digitalRead(39))
+  //   ;
 
+  bool btn = true;
+  digitalWrite(LED_L, HIGH);
+  digitalWrite(LED_M, HIGH);
+  digitalWrite(LED_R, LOW);
+  while (digitalRead(36)) {
+    if (!digitalRead(39) && btn) {
+      mode = (mode + 1) % 6;
+      if (mode == 0) {
+        digitalWrite(LED_L, HIGH);
+        digitalWrite(LED_M, HIGH);
+        digitalWrite(LED_R, LOW);
+      } else if (mode == 1) {
+        digitalWrite(LED_L, LOW);
+        digitalWrite(LED_M, HIGH);
+        digitalWrite(LED_R, HIGH);
+      } else if (mode == 2) {
+        digitalWrite(LED_L, HIGH);
+        digitalWrite(LED_M, LOW);
+        digitalWrite(LED_R, LOW);
+      } else if (mode == 3) {
+        digitalWrite(LED_L, LOW);
+        digitalWrite(LED_M, LOW);
+        digitalWrite(LED_R, HIGH);
+      } else if (mode == 4) {
+        digitalWrite(LED_L, HIGH);
+        digitalWrite(LED_M, HIGH);
+        digitalWrite(LED_R, HIGH);
+      } else if (mode == 5) {
+        digitalWrite(LED_L, HIGH);
+        digitalWrite(LED_M, LOW);
+        digitalWrite(LED_R, HIGH);
+      }
+    }
+    btn = digitalRead(39);
+    delay(50);
+  }
+
+  digitalWrite(LED_L, LOW);
+  digitalWrite(LED_R, LOW);
   digitalWrite(LED_M, HIGH);
   delay(1000);
   digitalWrite(LED_M, LOW);
@@ -525,12 +714,37 @@ void setup() {
 
 
 void loop() {
-  
+
   // LOXRead();
   // Serial.printf("[%d] ", micros() - lastMicros);
   // lastMicros = micros();
   //Serial.printf("F: %d, L: %d, R: %d, B: %d\n", loxReading[0], loxReading[1], loxReading[2], loxReading[3]);
-   
-   wallfollowing();
-   //MOTForward(1);
+
+  //MOTForward(1);
+
+  if (mode == 0) {
+    Serial.println("leftAdv");
+    leftAdv();
+  } else if (mode == 1) {
+    Serial.println("rightAdv");
+    rightAdv();
+  } else if (mode == 2) {
+    Serial.println("leftNorm");
+    leftNorm();
+  } else if (mode == 3) {
+    Serial.println("rightNorm");
+    rightNorm();
+  } else if (mode == 4) {
+    Serial.println("randAdv");
+    if (random(2))
+      leftAdv();
+    else
+      rightAdv();
+  } else if (mode == 5) {
+    Serial.println("randNorm");
+    if (random(2))
+      leftNorm();
+    else
+      rightNorm();
+  }
 }

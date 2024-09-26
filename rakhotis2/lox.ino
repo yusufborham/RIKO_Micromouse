@@ -3,6 +3,9 @@ void LOXInit() {
   pinMode(LED_R, OUTPUT);
   pinMode(LED_M, OUTPUT);
 
+  pinMode(XSH_B, OUTPUT);
+  digitalWrite(XSH_B, LOW);
+
   Serial.println(F("Initializing LOX..."));
   for (int i = 0; i < 3; i++)
     pinMode(SHT_LOX[i], OUTPUT);
@@ -44,7 +47,7 @@ bool LOXRead() {
       loxReading[i] = 8191;
 
     //digitalWrite(leds[i], loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2));
-    walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2);
+    i ? (walls[i] = loxReading[i] < (WIDTH / 1) && !(lox[i].readRangeStatus() == 2) ) : (walls[i] = loxReading[i] < (WIDTH * 0.7 ) && !(lox[i].readRangeStatus() == 2)) ;
     // digitalWrite(leds[i], loxReading[i] < (WIDTH / 1));
     // walls[i] = loxReading[i] < (WIDTH / 1);
     
